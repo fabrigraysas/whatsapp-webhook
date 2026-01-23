@@ -105,7 +105,6 @@ def upsert_lead(phone: str, text: str):
             "mobile_no": phone,
             "source": "WhatsApp",
             "status": "Open",
-            "notes": text or "Mensaje recibido por WhatsApp"
         }
         create_url = f"{ERP_URL}/api/resource/Lead"
         resp = requests.post(create_url, headers=HEADERS, json=payload)
@@ -126,3 +125,4 @@ def upsert_lead(phone: str, text: str):
     comm_url = f"{ERP_URL}/api/resource/Communication"
     resp2 = requests.post(comm_url, headers=HEADERS, json=comm_payload)
     print("ERPNext comm:", resp2.status_code, resp2.text)
+
