@@ -6,9 +6,8 @@ app = Flask(__name__)
 # ===== CONFIGURACIÓN =====
 VERIFY_TOKEN = "fabrigray_verify"
 
-ERP_URL = "https://fabrigraysas.v.erpnext.com"
-ERP_API_KEY = "640077c21610ddd"
-ERP_API_SECRET = "ba99f366dfab7d4"
+ERP_URL = "https://fabrigraysas1.odoo.com"
+ERP_API_KEY = "16aaba4d24769b75b7fa9a4978d9672c42aa551a"
 
 # =========================
 
@@ -125,4 +124,5 @@ def upsert_lead(phone: str, text: str):
     comm_url = f"{ERP_URL}/api/resource/Communication"
     resp2 = requests.post(comm_url, headers=HEADERS, json=comm_payload)
     print("ERPNext comm:", resp2.status_code, resp2.text)
+
 
