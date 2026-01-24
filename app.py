@@ -12,7 +12,7 @@ ERP_API_KEY = "16aaba4d24769b75b7fa9a4978d9672c42aa551a"
 # =========================
 
 HEADERS = {
-    "Authorization": f"token {ERP_API_KEY}:{ERP_API_SECRET}",
+    "Authorization": f"token {ERP_API_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 }
@@ -124,5 +124,6 @@ def upsert_lead(phone: str, text: str):
     comm_url = f"{ERP_URL}/api/resource/Communication"
     resp2 = requests.post(comm_url, headers=HEADERS, json=comm_payload)
     print("ERPNext comm:", resp2.status_code, resp2.text)
+
 
 
