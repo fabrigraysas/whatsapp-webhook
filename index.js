@@ -202,6 +202,92 @@ app.post("/webhook/meta", async (req, res) => {
     console.error("Webhook processing error:", err?.message || err);
   }
 });
+const { META_WA_PHONE_NUMBER_ID, META_WA_ACCESS_TOKEN, SEND_SECRET } = process.env;
+["META_WA_PHONE_NUMBER_ID", "META_WA_ACCESS_TOKEN", "SEND_SECRET"].forEach(must);
+
+// Render helper: enviar WhatsApp (Cloud API)
+async function sendWhatsAppText({ toPhoneE164, text }) {
+  // Meta requiere número sin "+" y sin espacios: 57300...
+  const to = toPhoneE164.replace(/[^\d]/g, "");
+
+  const url = `https://graph.facebook.com/v19.0/${META_WA_PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: { body: text }
+  };
+
+  const res = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${META_WA_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    timeout: 20000,
+  });
+
+  return res.data; // trae message id, etc.
+}
+
+// UI simple para asesoras (formulario)
+app.get("/send", async (req, res) => {
+  const { secret, lead_id, phone } = req.query;
+
+  if (secret !== SEND_SECRET) return res.status(403).send("Forbidden");
+
+  // Formulario HTML simple (sin complicaciones)
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`
+    <html>
+      <body style="font-family: Arial; max-width: 720px; margin: 24px auto;">
+        <h2>Enviar WhatsApp</h2>
+        <form method="POST" action="/send">
+          <input type="hidden" name="secret" value="${secret}" />
+          <label>Lead ID</label><br/>
+          <input name="lead_id" value="${lead_id || ""}" style="width: 100%; padding: 8px;" /><br/><br/>
+
+          <label>Teléfono (E.164, ej +573001112233)</label><br/>
+          <input name="phone" value="${phone || ""}" style="width: 100%; padding: 8px;" /><br/><br/>
+
+          <label>Mensaje</label><br/>
+          <textarea name="message" rows="6" style="width: 100%; padding: 8px;"></textarea><br/><br/>
+
+          <button type="submit" style="padding: 10px 16px;">Enviar</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
+
+// Enviar y registrar en Odoo
+app.post("/send", express.urlencoded({ extended: true }), async (req, res) => {
+  try {
+    const { secret, lead_id, phone, message } = req.body;
+
+    if (secret !== SEND_SECRET) return res.status(403).send("Forbidden");
+    if (!phone || !message) return res.status(400).send("Faltan campos: phone o message");
+
+    // 1) Enviar WhatsApp por Meta
+    const metaResp = await sendWhatsAppText({ toPhoneE164: phone, text: message });
+
+    // 2) Registrar el mensaje en Odoo en el chatter del lead (si viene lead_id)
+    if (lead_id) {
+      await odooExecute("mail.message", "create", [{
+        model: "crm.lead",
+        res_id: parseInt(lead_id, 10),
+        message_type: "comment",
+        body: `✅ WhatsApp enviado a ${phone}: ${message}<br/><small>Meta: ${JSON.stringify(metaResp)}</small>`,
+      }]);
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<p>Mensaje enviado OK.</p><p><a href="/send?secret=${secret}&lead_id=${lead_id}&phone=${encodeURIComponent(phone)}">Enviar otro</a></p>`);
+  } catch (err) {
+    console.error("Send error:", err?.response?.data || err?.message || err);
+    res.status(500).send("Error enviando WhatsApp. Revisa logs.");
+  }
+});
 
 app.get("/", (_req, res) => res.status(200).send("OK"));
 app.listen(PORT, () => console.log(`Listening on ${PORT}`));
