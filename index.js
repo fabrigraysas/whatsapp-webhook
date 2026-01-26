@@ -10,7 +10,7 @@ app.use(morgan("combined"));
  * ENV required:
  * - META_VERIFY_TOKEN
  * - ODOO_URL (e.g. https://tuempresa.odoo.com)
- * - ODOO_DB (database name)
+ * - ODOO_DB (database name / subdomain on Odoo Online)
  * - ODOO_USER (integration user's email/login)
  * - ODOO_API_KEY (API key created in Odoo for that user)
  * - ODOO_TEAM_ID (crm.team numeric id for "Ventas WhatsApp")
@@ -30,15 +30,52 @@ function must(name) {
 }
 ["META_VERIFY_TOKEN", "ODOO_URL", "ODOO_DB", "ODOO_USER", "ODOO_API_KEY", "ODOO_TEAM_ID"].forEach(must);
 
-/** Odoo JSON-RPC helper */
+/** ===== Odoo auth (uid) cache ===== */
+let cachedUid = null;
+
+async function odooLoginUid() {
+  if (cachedUid) return cachedUid;
+
+  const payload = {
+    jsonrpc: "2.0",
+    method: "call",
+    params: {
+      service: "common",
+      method: "authenticate",
+      args: [ODOO_DB, ODOO_USER, ODOO_API_KEY, {}],
+    },
+    id: Date.now(),
+  };
+
+  const res = await axios.post(`${ODOO_URL}/jsonrpc`, payload, {
+    headers: { "Content-Type": "application/json" },
+    timeout: 20000,
+  });
+
+  if (res.data?.error) {
+    throw new Error(`Odoo auth error: ${JSON.stringify(res.data.error)}`);
+  }
+
+  const uid = res.data?.result;
+  if (!uid) {
+    throw new Error("Odoo auth failed: uid vacío (revisa ODOO_DB / ODOO_USER / ODOO_API_KEY)");
+  }
+
+  cachedUid = uid;
+  return uid;
+}
+
+/** ===== Odoo JSON-RPC helper ===== */
 async function odooExecute(model, method, args = [], kwargs = {}) {
+  const uid = await odooLoginUid();
+
   const payload = {
     jsonrpc: "2.0",
     method: "call",
     params: {
       service: "object",
       method: "execute_kw",
-      args: [ODOO_DB, ODOO_USER, ODOO_API_KEY, model, method, args, kwargs],
+      args: [ODOO_DB, uid, ODOO_API_KEY, model, method, args, kwargs],
     },
     id: Date.now(),
   };
@@ -72,8 +109,6 @@ app.get("/webhook/meta", (req, res) => {
 
 /**
  * Meta Webhook receiver endpoint (POST)
- * We respond 200 immediately and process asynchronously to avoid retries.
- * This implementation:
  * - Creates/updates a contact (res.partner) using phone = +{wa_id}
  * - Reuses an open lead for the contact, otherwise creates a new one
  * - Logs the message in the lead chatter
